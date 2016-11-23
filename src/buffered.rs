@@ -15,7 +15,7 @@ use prelude::*;
 use core::cmp;
 use core::fmt;
 use ::{Error, SeekFrom};
-use impls::{FailedToFillWholeBuffer, FailedToWriteWholeBuffer};
+use impls::{FailedToFillWholeBuffer, FailedToWriteWholeBuffer, Forward};
 use memchr::memrchr;
 
 /// The `BufReader` struct adds buffering to any reader.
@@ -90,7 +90,7 @@ impl<B: AsMut<[u8]>, R: Read> Read for BufReader<R, B> {
             return self.inner.read(buf);
         }
         let nread = {
-            let mut rem = self.fill_buf()?;
+            let mut rem = Forward(self.fill_buf()?);
             rem.read(buf).map_err(|_: FailedToFillWholeBuffer| {
                 R::Error::unexpected_eof("failed to fill whole buffer")
             })?
@@ -378,10 +378,10 @@ impl<B: AsMut<[u8]> + AsRef<[u8]>, W: Write> Write for BufWriter<W, B> {
             self.panicked = false;
             r
         } else {
-            let map = |FailedToWriteWholeBuffer| {
+            let map = |_: FailedToWriteWholeBuffer| {
                 W::Error::write_zero("failed to write whole buffer")
             };
-            Write::write(&mut &mut self.buf.as_mut()[..self.len], buf).map_err(map)
+            Write::write(&mut Forward(&mut self.buf.as_mut()[..self.len]), buf).map_err(map)
         }
     }
     fn flush(&mut self) -> Result<(), W::Error> {

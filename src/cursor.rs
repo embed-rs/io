@@ -12,7 +12,7 @@ use prelude::*;
 
 use core::cmp;
 use core::fmt;
-use impls::{FailedToFillWholeBuffer, FailedToWriteWholeBuffer};
+use impls::{FailedToFillWholeBuffer, FailedToWriteWholeBuffer, Forward};
 use ::{SeekFrom, Error};
 
 /// A `Cursor` wraps another type and provides it with a
@@ -229,7 +229,7 @@ impl<T> Seek for Cursor<T> where T: AsRef<[u8]> {
 impl<T> Read for Cursor<T> where T: AsRef<[u8]> {
     type Error = FailedToFillWholeBuffer;
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FailedToFillWholeBuffer> {
-        let n = Read::read(&mut self.fill_buf()?, buf)?;
+        let n = Read::read(&mut Forward(self.fill_buf()?), buf)?;
         self.pos += n as u64;
         Ok(n)
     }
@@ -248,7 +248,7 @@ impl<'a> Write for Cursor<&'a mut [u8]> {
     #[inline]
     fn write(&mut self, data: &[u8]) -> Result<usize, FailedToWriteWholeBuffer> {
         let pos = cmp::min(self.pos, self.inner.len() as u64);
-        let amt = (&mut self.inner[(pos as usize)..]).write(data)?;
+        let amt = Forward(&mut self.inner[(pos as usize)..]).write(data)?;
         self.pos += amt as u64;
         Ok(amt)
     }

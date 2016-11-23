@@ -16,50 +16,57 @@ use core::mem;
 // =============================================================================
 // Forwarding implementations
 
-impl<'a, R: Read + ?Sized> Read for &'a mut R {
+
+// FIXME: orphan impls don't allow implementing this and `std_impls` at the same time
+// specialization + lattice rules required
+/// Helper type to work around the issue that we can't implement `Read` for `&impl Read` and
+/// `std::io::Read` for `&impl std::io::Read` in the presence of `impl Read for impl std::io::Read`
+pub struct Forward<T>(pub T);
+
+impl<'a, R: Read + ?Sized> Read for Forward<&'a mut R> {
     type Error = R::Error;
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, R::Error> {
-        (**self).read(buf)
+        (*self.0).read(buf)
     }
 
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), R::Error> {
-        (**self).read_exact(buf)
+        (*self.0).read_exact(buf)
     }
 }
 
-impl<'a, W: Write + ?Sized> Write for &'a mut W {
+impl<'a, W: Write + ?Sized> Write for Forward<&'a mut W> {
     type Error = W::Error;
     #[inline]
-    fn write(&mut self, buf: &[u8]) -> Result<usize, W::Error> { (**self).write(buf) }
+    fn write(&mut self, buf: &[u8]) -> Result<usize, W::Error> { (*self.0).write(buf) }
 
     #[inline]
-    fn flush(&mut self) -> Result<(), W::Error> { (**self).flush() }
+    fn flush(&mut self) -> Result<(), W::Error> { (*self.0).flush() }
 
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> Result<(), W::Error> {
-        (**self).write_all(buf)
+        (*self.0).write_all(buf)
     }
 
     #[inline]
     fn write_fmt(&mut self, fmt: fmt::Arguments) -> Result<(), W::Error> {
-        (**self).write_fmt(fmt)
+        (*self.0).write_fmt(fmt)
     }
 }
 
-impl<'a, S: Seek + ?Sized> Seek for &'a mut S {
+impl<'a, S: Seek + ?Sized> Seek for Forward<&'a mut S> {
     type Error = S::Error;
     #[inline]
-    fn seek(&mut self, pos: SeekFrom) -> Result<u64, S::Error> { (**self).seek(pos) }
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, S::Error> { (*self.0).seek(pos) }
 }
 
-impl<'a, B: BufRead + ?Sized> BufRead for &'a mut B {
+impl<'a, B: BufRead + ?Sized> BufRead for Forward<&'a mut B> {
     #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8], <B as Read>::Error> { (**self).fill_buf() }
+    fn fill_buf(&mut self) -> Result<&[u8], <B as Read>::Error> { (*self.0).fill_buf() }
 
     #[inline]
-    fn consume(&mut self, amt: usize) { (**self).consume(amt) }
+    fn consume(&mut self, amt: usize) { (*self.0).consume(amt) }
 }
 
 
@@ -87,35 +94,35 @@ impl fmt::Debug for FailedToFillWholeBuffer {
 ///
 /// Note that reading updates the slice to point to the yet unread part.
 /// The slice will be empty when EOF is reached.
-impl<'a> Read for &'a [u8] {
+impl<'a> Read for Forward<&'a [u8]> {
     type Error = FailedToFillWholeBuffer;
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, FailedToFillWholeBuffer> {
-        let amt = cmp::min(buf.len(), self.len());
-        let (a, b) = self.split_at(amt);
+        let amt = cmp::min(buf.len(), self.0.len());
+        let (a, b) = self.0.split_at(amt);
         buf[..amt].copy_from_slice(a);
-        *self = b;
+        self.0 = b;
         Ok(amt)
     }
 
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), FailedToFillWholeBuffer> {
-        if buf.len() > self.len() {
+        if buf.len() > self.0.len() {
             return Err(FailedToFillWholeBuffer);
         }
-        let (a, b) = self.split_at(buf.len());
+        let (a, b) = self.0.split_at(buf.len());
         buf.copy_from_slice(a);
-        *self = b;
+        self.0 = b;
         Ok(())
     }
 }
 
-impl<'a> BufRead for &'a [u8] {
+impl<'a> BufRead for Forward<&'a [u8]> {
     #[inline]
-    fn fill_buf(&mut self) -> Result<&[u8], FailedToFillWholeBuffer> { Ok(*self) }
+    fn fill_buf(&mut self) -> Result<&[u8], FailedToFillWholeBuffer> { Ok(self.0) }
 
     #[inline]
-    fn consume(&mut self, amt: usize) { *self = &self[amt..]; }
+    fn consume(&mut self, amt: usize) { self.0 = &self.0[amt..]; }
 }
 
 
@@ -142,14 +149,14 @@ impl fmt::Debug for FailedToWriteWholeBuffer {
 ///
 /// Note that writing updates the slice to point to the yet unwritten part.
 /// The slice will be empty when it has been completely overwritten.
-impl<'a> Write for &'a mut [u8] {
+impl<'a> Write for Forward<&'a mut [u8]> {
     type Error = FailedToWriteWholeBuffer;
     #[inline]
     fn write(&mut self, data: &[u8]) -> Result<usize, FailedToWriteWholeBuffer> {
-        let amt = cmp::min(data.len(), self.len());
-        let (a, b) = mem::replace(self, &mut []).split_at_mut(amt);
+        let amt = cmp::min(data.len(), self.0.len());
+        let (a, b) = mem::replace(&mut self.0, &mut []).split_at_mut(amt);
         a.copy_from_slice(&data[..amt]);
-        *self = b;
+        self.0 = b;
         Ok(amt)
     }
 

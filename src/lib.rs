@@ -1,39 +1,37 @@
 #![cfg_attr(feature = "unstable", feature(never_type))]
-#![cfg_attr(feature = "no_std", no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 //! This crate allows the implementation of readers and writers without requiring the
 //! standard library or even an explicit `Error` type. Convenience implementations exist
 //! such that if an algorithm works on the generic impl, it also will work for
 //! the standard libraries file and stdio types.
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 extern crate core;
 
 use core::cmp;
 use core::fmt;
 use core::result;
 
-// FIXME: orphan impls don't allow implementing this and `std_impls` at the same time
-// specialization + lattice rules required
-// this applies to all commented out code
-
-//pub use self::buffered::{BufReader, BufWriter, LineWriter};
-//pub use self::buffered::IntoInnerError;
-//pub use self::cursor::Cursor;
+pub use self::buffered::{BufReader, BufWriter, LineWriter};
+pub use self::buffered::IntoInnerError;
+pub use self::cursor::Cursor;
 pub use self::util::{copy, sink, Sink, empty, Empty, repeat, Repeat};
 pub use self::error::Error;
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 
 pub mod prelude;
-//mod buffered;
-//mod cursor;
-//mod impls;
+mod buffered;
+mod cursor;
+mod impls;
 mod util;
 mod error;
 mod str;
+// FIXME: upstream to libcore
+mod memchr;
 
-#[cfg(not(feature = "no_std"))]
+#[cfg(feature = "std")]
 mod std_impls;
 
 #[cfg(feature = "unstable")]
