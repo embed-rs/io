@@ -11,8 +11,7 @@
 use prelude::*;
 
 use core::cmp;
-use core::fmt;
-use impls::{FailedToFillWholeBuffer, FailedToWriteWholeBuffer, Forward};
+use impls::Forward;
 use ::{SeekFrom, Error};
 
 /// A `Cursor` wraps another type and provides it with a
@@ -81,12 +80,13 @@ use ::{SeekFrom, Error};
 /// }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Cursor<T> {
+pub struct Cursor<T, E: Error> {
     inner: T,
     pos: u64,
+    phantom: ::core::marker::PhantomData<E>,
 }
 
-impl<T> Cursor<T> {
+impl<T, E: Error> Cursor<T, E> {
     /// Creates a new cursor wrapping the provided underlying I/O object.
     ///
     /// # Examples
@@ -98,8 +98,8 @@ impl<T> Cursor<T> {
     /// # fn force_inference(_: &Cursor<Vec<u8>>) {}
     /// # force_inference(&buff);
     /// ```
-    pub fn new(inner: T) -> Cursor<T> {
-        Cursor { pos: 0, inner: inner }
+    pub fn new(inner: T) -> Self {
+        Cursor { pos: 0, inner: inner, phantom: ::core::marker::PhantomData }
     }
 
     /// Consumes this cursor, returning the underlying value.
@@ -191,26 +191,9 @@ impl<T> Cursor<T> {
     pub fn set_position(&mut self, pos: u64) { self.pos = pos; }
 }
 
-pub struct InvalidSeekToNegativePosition;
-
-impl Error for InvalidSeekToNegativePosition {
-    fn unexpected_eof(_: &'static str) -> Self {
-        panic!("don't use InvalidSeekToNegativePosition");
-    }
-    fn is_interrupted(&self) -> bool { false }
-    fn write_zero(_: &'static str) -> Self { panic!("don't use InvalidSeekToNegativePosition") }
-    fn other(_: &'static str) -> Self { panic!("don't use InvalidSeekToNegativePosition") }
-}
-
-impl fmt::Debug for InvalidSeekToNegativePosition {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str("invalid seek to a negative position")
-    }
-}
-
-impl<T> Seek for Cursor<T> where T: AsRef<[u8]> {
-    type Error = InvalidSeekToNegativePosition;
-    fn seek(&mut self, style: SeekFrom) -> Result<u64, InvalidSeekToNegativePosition> {
+impl<T, E: Error> Seek for Cursor<T, E> where T: AsRef<[u8]> {
+    type Error = E;
+    fn seek(&mut self, style: SeekFrom) -> Result<u64, E> {
         let pos = match style {
             SeekFrom::Start(n) => { self.pos = n; return Ok(n) }
             SeekFrom::End(n) => self.inner.as_ref().len() as i64 + n,
@@ -218,7 +201,7 @@ impl<T> Seek for Cursor<T> where T: AsRef<[u8]> {
         };
 
         if pos < 0 {
-            Err(InvalidSeekToNegativePosition)
+            Err(E::other("invalid seek to a negative position"))
         } else {
             self.pos = pos as u64;
             Ok(self.pos)
@@ -226,31 +209,31 @@ impl<T> Seek for Cursor<T> where T: AsRef<[u8]> {
     }
 }
 
-impl<T> Read for Cursor<T> where T: AsRef<[u8]> {
-    type Error = FailedToFillWholeBuffer;
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, FailedToFillWholeBuffer> {
-        let n = Read::read(&mut Forward(self.fill_buf()?), buf)?;
+impl<T, E: Error> Read for Cursor<T, E> where T: AsRef<[u8]> {
+    type Error = E;
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, E> {
+        let n = Read::read(&mut Forward::new(self.fill_buf()?), buf)?;
         self.pos += n as u64;
         Ok(n)
     }
 }
 
-impl<T> BufRead for Cursor<T> where T: AsRef<[u8]> {
-    fn fill_buf(&mut self) -> Result<&[u8], FailedToFillWholeBuffer> {
+impl<T, E: Error> BufRead for Cursor<T, E> where T: AsRef<[u8]> {
+    fn fill_buf(&mut self) -> Result<&[u8], E> {
         let amt = cmp::min(self.pos, self.inner.as_ref().len() as u64);
         Ok(&self.inner.as_ref()[(amt as usize)..])
     }
     fn consume(&mut self, amt: usize) { self.pos += amt as u64; }
 }
 
-impl<'a> Write for Cursor<&'a mut [u8]> {
-    type Error = FailedToWriteWholeBuffer;
+impl<'a, E: Error> Write for Cursor<&'a mut [u8], E> {
+    type Error = E;
     #[inline]
-    fn write(&mut self, data: &[u8]) -> Result<usize, FailedToWriteWholeBuffer> {
+    fn write(&mut self, data: &[u8]) -> Result<usize, E> {
         let pos = cmp::min(self.pos, self.inner.len() as u64);
-        let amt = Forward(&mut self.inner[(pos as usize)..]).write(data)?;
+        let amt = Forward::new(&mut self.inner[(pos as usize)..]).write(data)?;
         self.pos += amt as u64;
         Ok(amt)
     }
-    fn flush(&mut self) -> Result<(), FailedToWriteWholeBuffer> { Ok(()) }
+    fn flush(&mut self) -> Result<(), E> { Ok(()) }
 }

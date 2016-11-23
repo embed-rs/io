@@ -19,35 +19,3 @@ impl Error for ::Void {
     fn write_zero(_: &'static str) -> Self { panic!("don't construct never errors") }
     fn other(_: &'static str) -> Self { panic!("don't construct never errors") }
 }
-
-#[cfg(feature = "std")]
-#[derive(Debug)]
-struct IoError(&'static str);
-
-#[cfg(feature = "std")]
-impl ::std::fmt::Display for IoError {
-    fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        fmt.write_str(self.0)
-    }
-}
-
-#[cfg(feature = "std")]
-impl ::std::error::Error for IoError {
-    fn description(&self) -> &str { self.0 }
-}
-
-#[cfg(feature = "std")]
-impl Error for ::std::io::Error {
-    fn unexpected_eof(s: &'static str) -> Self {
-        ::std::io::Error::new(::std::io::ErrorKind::UnexpectedEof, Box::new(IoError(s)))
-    }
-    fn is_interrupted(&self) -> bool {
-        self.kind() == ::std::io::ErrorKind::Interrupted
-    }
-    fn write_zero(s: &'static str) -> Self {
-        ::std::io::Error::new(::std::io::ErrorKind::WriteZero, Box::new(IoError(s)))
-    }
-    fn other(s: &'static str) -> Self {
-        ::std::io::Error::new(::std::io::ErrorKind::Other, Box::new(IoError(s)))
-    }
-}

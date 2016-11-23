@@ -1,4 +1,4 @@
-use ::{Read, Write, Seek, BufRead, SeekFrom};
+use ::{Read, Write, Seek, BufRead, SeekFrom, Error};
 
 impl<R: ::std::io::Read> Read for R {
     type Error = ::std::io::Error;
@@ -44,5 +44,20 @@ impl<B: ::std::io::BufRead> BufRead for B {
     }
     fn consume(&mut self, amt: usize) {
         ::std::io::BufRead::consume(self, amt)
+    }
+}
+
+impl Error for ::std::io::Error {
+    fn unexpected_eof(s: &'static str) -> Self {
+        ::std::io::Error::new(::std::io::ErrorKind::UnexpectedEof, s)
+    }
+    fn is_interrupted(&self) -> bool {
+        self.kind() == ::std::io::ErrorKind::Interrupted
+    }
+    fn write_zero(s: &'static str) -> Self {
+        ::std::io::Error::new(::std::io::ErrorKind::WriteZero, s)
+    }
+    fn other(s: &'static str) -> Self {
+        ::std::io::Error::new(::std::io::ErrorKind::Other, s)
     }
 }

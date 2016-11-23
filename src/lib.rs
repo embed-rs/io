@@ -17,6 +17,7 @@ pub use self::buffered::{BufReader, BufWriter, LineWriter};
 pub use self::buffered::IntoInnerError;
 pub use self::cursor::Cursor;
 pub use self::util::{copy, sink, Sink, empty, Empty, repeat, Repeat};
+pub use self::impls::Forward;
 pub use self::error::Error;
 
 const DEFAULT_BUF_SIZE: usize = 8 * 1024;
@@ -38,6 +39,7 @@ mod std_impls;
 type Void = !;
 
 #[cfg(not(feature = "unstable"))]
+#[derive(Debug)]
 pub enum Void {}
 
 /// The `Read` trait allows for reading bytes from a source.
@@ -355,7 +357,7 @@ pub trait Write {
 pub trait Seek {
     /// All `Seek` impls will need to supply an error type.
     /// The `std` types will automatically supply `std::io::Error`
-    type Error;
+    type Error: Error;
     /// Seek to an offset, in bytes, in a stream.
     ///
     /// A seek beyond the end of a stream is allowed, but implementation
