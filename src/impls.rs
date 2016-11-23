@@ -23,6 +23,18 @@ use core::mem;
 /// `std::io::Read` for `&impl std::io::Read` in the presence of `impl Read for impl std::io::Read`
 pub struct Forward<T>(pub T);
 
+impl<T> AsRef<T> for Forward<T> {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T> AsMut<T> for Forward<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 impl<'a, R: Read + ?Sized> Read for Forward<&'a mut R> {
     type Error = R::Error;
     #[inline]
